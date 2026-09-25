@@ -11,6 +11,8 @@ export interface Connection {
   onMessage(fn: (m: HostMsg) => void): () => void;
   onStatus(fn: (s: ConnStatus) => void): () => void;
   close(): void;
+  /** The PeerJS peer (online tables only), used for voice calls. */
+  getPeer(): PeerT | null;
 }
 
 const PEER_PREFIX = 'dominobr-v1-';
@@ -138,6 +140,9 @@ export class HostConnection implements Connection {
   send(m: ClientMsg) {
     queueMicrotask(() => this.room.handle(this.clientId, m));
   }
+  getPeer() {
+    return this.peer && this.peer.open ? this.peer : null;
+  }
   onMessage(fn: (m: HostMsg) => void) {
     return this.msgs.on(fn);
   }
@@ -243,6 +248,9 @@ export class GuestConnection implements Connection {
 
   send(m: ClientMsg) {
     if (this.conn?.open) this.conn.send(m);
+  }
+  getPeer() {
+    return this.peer && this.peer.open ? this.peer : null;
   }
   onMessage(fn: (m: HostMsg) => void) {
     return this.msgs.on(fn);

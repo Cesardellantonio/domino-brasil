@@ -283,6 +283,11 @@ h3 {
   gap: 6px;
   margin: 10px 0;
 }
+.hint-text {
+  font-size: 0.8rem;
+  color: var(--ink-3);
+  font-weight: 600;
+}
 .field > label {
   font-size: 0.8rem;
   font-weight: 800;
@@ -1082,15 +1087,22 @@ h3 {
   position: absolute;
   z-index: 3;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px 6px 6px;
-  border-radius: 999px;
-  background: rgba(3, 20, 12, 0.6);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 7px 10px 8px 7px;
+  border-radius: 20px;
+  background: rgba(3, 20, 12, 0.66);
   border: 1px solid var(--line);
   backdrop-filter: blur(6px);
   transition: box-shadow 0.3s, transform 0.3s;
   max-width: 46%;
+}
+.seat-top-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 .seat-top {
   top: 10px;
@@ -1106,12 +1118,11 @@ h3 {
   right: 10px;
   top: 42%;
   transform: translateY(-50%);
-  flex-direction: row-reverse;
-  padding: 6px 6px 6px 12px;
+  align-items: flex-end;
   text-align: right;
 }
-.seat-right .seat-count {
-  justify-content: flex-end;
+.seat-right .seat-top-row {
+  flex-direction: row-reverse;
 }
 .seat.ally .avatar {
   border-color: var(--gold);
@@ -1130,6 +1141,16 @@ h3 {
     transform: scale(1.08);
   }
 }
+.seat.talking .avatar,
+.me-id.talking .avatar,
+.icon-btn.mic.talking {
+  box-shadow: 0 0 0 3px #3ddc84, 0 0 18px #3ddc84;
+}
+.avatar-tag.call {
+  left: -6px;
+  right: auto;
+  background: #0f3d2a;
+}
 .seat-info {
   display: grid;
   gap: 2px;
@@ -1137,28 +1158,63 @@ h3 {
 }
 .seat-name {
   font-weight: 800;
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.seat-count {
+/* quantas pedras cada um tem: leque de pedras viradas + número grande */
+.seat-tiles {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.8rem;
+  gap: 8px;
 }
-.backs {
+.seat-right .seat-tiles {
+  flex-direction: row-reverse;
+}
+.fan {
   display: flex;
+  padding-left: 5px;
 }
-.backs i {
-  width: 7px;
-  height: 13px;
-  border-radius: 2px;
-  background: linear-gradient(135deg, #9a2a3e, #5a1321);
-  border: 1px solid #e7c36a88;
-  margin-right: -2px;
-  box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4);
+.fan i {
+  width: 12px;
+  height: 22px;
+  margin-left: -5px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #a52d44, #5a1321);
+  border: 1px solid #e7c36acc;
+  box-shadow: 1px 2px 3px rgba(0, 0, 0, 0.45);
+}
+.fan i:nth-child(odd) {
+  transform: translateY(-1px) rotate(-2deg);
+}
+.fan i:nth-child(even) {
+  transform: translateY(1px) rotate(2deg);
+}
+.count-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #13261c;
+  line-height: 1.2;
+}
+.count-badge b {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+.count-badge small {
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.count-badge.low {
+  background: var(--coral);
+  color: #fff;
+  animation: pulse 1.2s infinite;
 }
 .seat-flag {
   font-size: 0.7rem;
@@ -1887,37 +1943,47 @@ h3 {
 /* ------------------------------------------------------------------ responsive */
 @media (max-width: 699px) {
   .seat {
-    flex-direction: column;
+    align-items: center;
     padding: 6px;
     border-radius: 16px;
-    gap: 3px;
-    max-width: 88px;
+    gap: 4px;
+    max-width: 96px;
     text-align: center;
+  }
+  .seat .seat-top-row,
+  .seat-right .seat-top-row {
+    flex-direction: column;
+    gap: 2px;
   }
   .seat-right {
-    flex-direction: column;
-    padding: 6px;
-    text-align: center;
-  }
-  .seat-right .seat-count,
-  .seat-count {
-    justify-content: center;
+    align-items: center;
   }
   .seat-left {
     left: 4px;
-    top: 38%;
+    top: 36%;
   }
   .seat-right {
     right: 4px;
-    top: 38%;
+    top: 36%;
   }
   .seat-top {
     top: 6px;
+    max-width: 80%;
     flex-direction: row;
-    max-width: 70%;
+    align-items: center;
     padding: 5px 10px 5px 5px;
     border-radius: 999px;
-    text-align: left;
+    gap: 8px;
+  }
+  .seat-top .seat-top-row {
+    flex-direction: row;
+    flex: none;
+  }
+  .seat-top .seat-info {
+    min-width: max-content;
+  }
+  .seat-top .seat-name {
+    max-width: 110px;
   }
   .seat .avatar {
     width: 38px;
@@ -1926,15 +1992,20 @@ h3 {
   }
   .seat-name {
     font-size: 0.78rem;
-    max-width: 80px;
+    max-width: 84px;
   }
-  .backs {
-    display: none;
+  .seat-tiles,
+  .seat-right .seat-tiles {
+    flex-direction: column;
+    gap: 3px;
   }
-  .seat-count b::after {
-    content: ' 🁢';
-    font-weight: 400;
-    opacity: 0.8;
+  .seat-top .seat-tiles {
+    flex-direction: row;
+  }
+  .fan i {
+    width: 9px;
+    height: 17px;
+    margin-left: -3px;
   }
   .voids {
     flex-wrap: wrap;
@@ -2007,4 +2078,132 @@ h3 {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ------------------------------------------------------------------ minhas pedras, placar, voz, conversa */
+.my-count {
+  display: grid;
+  line-height: 1.05;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.my-count b {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  color: var(--ink);
+}
+.my-count small {
+  font-size: 0.68rem;
+  color: var(--ink-3);
+}
+.score-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 70px;
+}
+.score-bar i {
+  display: block;
+  height: 5px;
+  min-width: 3px;
+  max-width: 44px;
+  border-radius: 3px;
+  flex: none;
+  transition: width 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.score-bar {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.15) 0 44px, transparent 44px) no-repeat left center / 100% 5px;
+}
+.score-bar small {
+  margin-left: auto;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: var(--ink-3);
+}
+.score.ally .score-bar i {
+  background: var(--gold);
+  box-shadow: 0 0 6px var(--gold);
+}
+.score.rival .score-bar i {
+  background: var(--coral);
+  box-shadow: 0 0 6px var(--coral);
+}
+.call-pill {
+  background: #1fae55;
+  color: #fff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+}
+.icon-btn.mic.live {
+  background: #1fae55;
+  border-color: #1fae55;
+}
+.icon-btn.mic.muted {
+  background: #c2412d;
+  border-color: #c2412d;
+}
+.icon-btn.mic:not(.live):not(.muted) {
+  animation: micInvite 2.4s ease-in-out 3;
+}
+@keyframes micInvite {
+  50% {
+    box-shadow: 0 0 0 5px rgba(31, 174, 85, 0.45);
+  }
+}
+.chat-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.chat-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid #ddd2b8;
+  background: #fff;
+  color: var(--paper-ink);
+  font-weight: 700;
+  font-size: 16px;
+  outline: none;
+}
+.chat-row .btn {
+  padding: 8px 14px;
+}
+.sub-note {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--paper-ink-2);
+}
+.voice-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.voice-member {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 800;
+  font-size: 0.85rem;
+  transition: box-shadow 0.15s;
+}
+.voice-member.talking {
+  box-shadow: 0 0 0 2px #3ddc84, 0 0 14px #3ddc84;
+}
+.voice-member.muted {
+  opacity: 0.7;
+}
+.btn.live {
+  background: #1fae55;
+  border: 0;
+  color: #fff;
 }

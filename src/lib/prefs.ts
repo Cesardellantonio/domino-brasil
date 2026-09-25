@@ -1,13 +1,11 @@
 import { useSyncExternalStore } from 'react';
 
-export type Lang = 'pt' | 'en';
-
 export interface Prefs {
   clientId: string;
   name: string;
   avatar: string;
-  lang: Lang;
   sound: boolean;
+  ambience: boolean;
   coloredPips: boolean;
   memoryAid: boolean;
   theme: 'felt' | 'wood' | 'night';
@@ -28,13 +26,12 @@ function load(): Prefs {
   } catch {
     /* ignore */
   }
-  const lang: Lang = navigator.language?.toLowerCase().startsWith('pt') ? 'pt' : 'en';
   return {
     clientId: saved.clientId || randomId(),
     name: saved.name || '',
     avatar: saved.avatar || '😎',
-    lang: saved.lang || (lang === 'en' ? 'en' : 'pt'),
     sound: saved.sound ?? true,
+    ambience: saved.ambience ?? true,
     coloredPips: saved.coloredPips ?? false,
     memoryAid: saved.memoryAid ?? true,
     theme: saved.theme || 'felt',

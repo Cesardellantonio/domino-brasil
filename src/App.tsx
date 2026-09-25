@@ -107,7 +107,7 @@ function SessionScreen({ code, go, openSheet }: { code: string; go: (h: string) 
   const inGame = st.phase !== 'lobby' && st.view;
   return (
     <>
-      {inGame ? <Game st={st} send={s.send} emotes={s.emotes} onMenu={() => setMenu(true)} /> : <Lobby st={st} send={s.send} onLeave={leave} />}
+      {inGame ? <Game st={st} send={s.send} emotes={s.emotes} onMenu={() => setMenu(true)} voice={s.voice} /> : <Lobby st={st} send={s.send} onLeave={leave} voice={s.voice} />}
       {s.status !== 'open' && (
         <div className="conn-toast">
           {s.status === 'notFound' ? t.hostOffline : t.reconnecting}
@@ -119,6 +119,7 @@ function SessionScreen({ code, go, openSheet }: { code: string; go: (h: string) 
         </div>
       )}
       {s.error && <div className="error-toast">{s.error}</div>}
+      {s.voice.error && <div className="error-toast">{s.voice.error}</div>}
       {menu && (
         <Sheet title={t.menu} onClose={() => setMenu(false)}>
           <div className="menu-list">
@@ -138,6 +139,17 @@ function SessionScreen({ code, go, openSheet }: { code: string; go: (h: string) 
             >
               ⚙️ {t.settings}
             </button>
+            {s.voice.available && (
+              <button
+                onClick={() => {
+                  setMenu(false);
+                  if (s.voice.joined) s.voice.leave();
+                  else void s.voice.join();
+                }}
+              >
+                {s.voice.joined ? `📴 ${t.leaveCall}` : `📞 ${t.joinCall}`}
+              </button>
+            )}
             {st.you.isHost && (
               <button
                 onClick={() => {

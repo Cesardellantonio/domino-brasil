@@ -1,47 +1,52 @@
 # 🁫 Dominó de Dupla
 
-Brazilian partnership dominoes (*dominó de dupla*) in the browser. Play with family online, against bots, or both, on a phone or a computer. There's nothing to install and no accounts.
+Dominó de dupla do jeito brasileiro, no navegador. Pra jogar com a família pela internet, contra bots, ou os dois, conversando por voz como na mesa do boteco. Funciona no celular e no computador, sem instalar nada e sem criar conta.
 
-**▶ Play:** https://cesardellantonio.github.io/domino-brasil/
+**▶ Jogar:** https://cesardellantonio.github.io/domino-brasil/
 
-## Features
+## O que tem
 
-- **Brazilian rules.** Double-six set, partners sit across, 6-6 opens the first hand, and *batida* scoring: simple 1, *carroça* 2, *lá-e-lô* 3, *cruzada* 4. Blocked games (*jogo trancado*) go to the lower pair total, ties double the next hand, and first to 6 wins, with *buchuda* on 6–0. Every rule is a table setting.
-- **Modes.** Duplas (2×2), free-for-all with 4, 3 players, and 1 vs 1 (the modes with a boneyard use *compra*).
-- **Online tables.** Create a table, send the link on WhatsApp, and your family joins in one tap. Any empty seat can be a bot, and you choose who partners with whom.
-- **Bots at three levels.**
-  - *Fácil* plays mostly at random.
-  - *Médio* uses a club-player heuristic: dumps heavy tiles and doubles, tracks who passed on which numbers, feeds its partner, and knows when to block.
-  - *Difícil* runs a determinized Monte Carlo search. It samples hundreds of possible hidden hands that fit everything seen so far and plays each move out.
-  - Arena results: Médio beats Fácil 78% of the time and Difícil beats Médio 85%.
-- **Hints.** 💡 asks the Difícil bot for its move.
-- **Feel.** Synthesized tile clacks and a table-slamming *batida* (no audio files), screen shake, "BATEU!" / "LÁ-E-LÔ!" banners, speech-bubble emotes and bot banter, a tile reveal at the end of each hand, and confetti.
-- **Memory aid.** Each player shows the numbers they've passed on. It can be turned off.
-- **Resilience.** If a phone sleeps or a page reloads, the player rejoins in the same seat. After 40s away, a bot plays for them until they're back.
-- **History.** Win/loss record, with partnership and rivalry stats per person.
-- **Languages and install.** Portuguese and English, installable as an app (PWA), and three table themes.
+- **Regras brasileiras.** 28 pedras, parceiro sentado à frente, e a carroça de sena (6-6) abre a primeira mão.
+- **Pontuação por soma dos pontos (padrão).** Quem bate marca a soma das pedras que sobraram na mão dos adversários, e a partida vai a 100 (50, 150 ou 200 também). Jogo trancado: vence a dupla com a menor soma. Empate: a próxima mão vale dobro.
+- **Pontuação por batida (opcional).** Simples 1, carroça 2, lá-e-lô 3, cruzada 4, partida a 6, com buchuda.
+- **Modos.** Duplas (2×2), cada um por si (4), 3 jogadores e 1 contra 1 (com compra no monte).
+- **Mesa online.** Crie a mesa, mande o link no WhatsApp e a família entra com um toque. Lugar vazio vira bot, e dá pra escolher quem faz dupla com quem.
+- **📞 Chamada de voz da mesa.** Todo mundo conversa enquanto joga, com microfone mudo e indicador de quem está falando.
+- **💬 Conversa.** Frases prontas ("Passou! 😂", "Segura essa!", "Desce mais uma gelada! 🍺") ou texto livre.
+- **Bots em três níveis.**
+  - *Fácil* joga quase aleatório.
+  - *Médio* joga como um bom jogador de clube: descarta pedras pesadas e carroças, lembra quem passou em qual número e joga nos números do parceiro.
+  - *Difícil* simula centenas de mãos possíveis, compatíveis com tudo que já foi visto, e joga cada lance até o fim.
+  - No torneio de teste, o Médio vence o Fácil em 91% e o Difícil vence o Médio em 75%.
+- **Dicas.** 💡 pergunta ao bot Difícil qual seria a jogada.
+- **Contagem clara de pedras.** Cada jogador mostra suas pedras viradas e um número grande, que fica vermelho com 2 ou menos.
+- **Som.** Todo sintetizado, sem arquivos: estalo da pedra na mesa, a pancada da batida com todas as pedras pulando, embaralhar, "toc-toc" de quem passa, e um ambiente de boteco opcional com burburinho e copo batendo.
+- **Memória.** Mostra os números em que cada um já passou (dá pra desligar).
+- **Histórico.** Vitórias, e retrospecto de parceria e rivalidade por pessoa.
+- **Aparência.** Três mesas (feltro, madeira de boteco, noite), e dá pra instalar como app (PWA).
 
-## How online play works
+## Como funciona o jogo online
 
-The game has **no server of its own**. The browser that creates the table is the authoritative host. It shuffles with `crypto.getRandomValues`, validates every move, runs the bots, and sends each player **only their own tiles**. Other players connect to it directly over WebRTC data channels using [PeerJS](https://peerjs.com). PeerJS's free public broker only introduces the peers, and its TURN relays cover strict mobile networks.
+Não existe servidor próprio. O navegador de quem **cria a mesa** é o anfitrião: ele embaralha (com `crypto.getRandomValues`), valida todas as jogadas, roda os bots e manda para cada jogador **só as pedras dele**. Os outros se conectam direto a ele por WebRTC, usando [PeerJS](https://peerjs.com). O servidor público do PeerJS só apresenta os navegadores, e os relays TURN dele resolvem redes móveis mais fechadas. A voz vai direto entre os participantes, pela mesma tecnologia.
 
-➡️ **The host should keep their tab open** during the match. If the host reloads, the table state is restored from local storage and everyone reconnects.
+➡️ **O anfitrião deve deixar a aba aberta** durante a partida. Se ele recarregar, a mesa volta de onde parou e todos reconectam. Se alguém cair, um bot joga no lugar dele depois de 40 segundos, até ele voltar.
 
-## Development
+## Desenvolvimento
 
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # engine + room tests (and the bot arena, ~40s)
-npm run arena      # bot strength tournament
+npm test           # regras, mesa e torneio de bots (~1 min)
+npm run arena      # só o torneio de bots
 npm run build
 ```
 
 ```
-src/engine   pure rules: dealing, legal moves, scoring, player views (no hidden info)
-src/bots     knowledge inference, deal sampling, heuristic + Monte Carlo bots
-src/net      Room (authoritative host) + PeerJS host/guest transports
-src/ui       React UI: board snake layout, table, lobby, sheets
+src/engine   regras puras: distribuição, jogadas válidas, pontuação, visão de cada jogador
+src/bots     dedução, amostragem de mãos, bots heurístico e Monte Carlo
+src/net      Room (anfitrião), transporte PeerJS, chamada de voz em malha
+src/ui       interface React: mesa, layout em cobrinha, lobby, telas
+scripts/     testes visuais com Chrome headless (partida, online, voz)
 ```
 
-Deploys to GitHub Pages on every push to `main` (see `.github/workflows/deploy.yml`).
+Cada push na `main` roda os testes e publica no GitHub Pages.

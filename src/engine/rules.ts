@@ -2,6 +2,11 @@ export type Mode = 'duplas' | 'ffa4' | 'three' | '1v1';
 
 export interface Rules {
   mode: Mode;
+  /**
+   * 'pips': whoever wins the hand scores the pips left in the opponents' hands (soma dos pontos).
+   * 'batida': fixed points per kind of go-out (simples 1, carroça 2, lá-e-lô 3, cruzada 4).
+   */
+  scoring: 'pips' | 'batida';
   /** Points needed to win the match. */
   targetScore: number;
   points: {
@@ -21,7 +26,8 @@ export interface Rules {
 
 export const DEFAULT_RULES: Rules = {
   mode: 'duplas',
-  targetScore: 6,
+  scoring: 'pips',
+  targetScore: 100,
   points: { simples: 1, carroca: 2, laELo: 3, cruzada: 4, blocked: 1 },
   blockedResolution: 'pairTotal',
   tieDoublesNext: true,
@@ -35,3 +41,12 @@ export const HAND_SIZE = 7;
 /** Score slot for a seat: team index in duplas, otherwise the seat itself. */
 export const teamOf = (mode: Mode, seat: number) => (hasTeams(mode) ? seat % 2 : seat);
 export const scoreSlots = (mode: Mode) => (hasTeams(mode) ? 2 : playersFor(mode));
+
+/** Pips held by everyone outside the winning score slot. */
+export function losersPips(mode: Mode, pipCounts: number[], winnerSlot: number): number {
+  let sum = 0;
+  pipCounts.forEach((c, seat) => {
+    if (teamOf(mode, seat) !== winnerSlot) sum += c;
+  });
+  return sum;
+}

@@ -5,7 +5,7 @@ import { DOUBLE_SIX, tileId } from '../src/engine/tiles';
 import { viewFor } from '../src/engine/view';
 import { mulberry32 } from '../src/lib/rng';
 
-const rules = (mode: Mode = 'duplas'): Rules => ({ ...DEFAULT_RULES, mode });
+const rules = (mode: Mode = 'duplas', scoring: Rules['scoring'] = 'batida'): Rules => ({ ...DEFAULT_RULES, mode, scoring, targetScore: scoring === 'pips' ? 100 : 6 });
 
 describe('dealing', () => {
   it('deals 7 tiles each and 6-6 starts the first 4-player hand', () => {
@@ -52,6 +52,25 @@ describe('batida kinds', () => {
   });
 });
 
+describe('pip scoring (soma dos pontos)', () => {
+  it('the pair that goes out scores the pips left in the opponents hands', () => {
+    const m = newMatch(rules('duplas', 'pips'), mulberry32(1));
+    const h: HandState = {
+      ...m.hand,
+      hands: [[tileId(2, 5)], [tileId(6, 6)], [tileId(1, 1)], [tileId(3, 4), tileId(0, 2)]],
+      root: { id: tileId(2, 4), inner: 2, outer: 4, seat: 1 },
+      left: [],
+      right: [{ id: tileId(4, 5), inner: 4, outer: 5, seat: 2 }],
+      ends: [2, 5],
+      turn: 0,
+      mustPlay: null,
+    };
+    const out = applyMatchMove({ ...m, hand: h }, 0, { t: 'play', id: tileId(2, 5), side: 'L' });
+    // opponents are seats 1 (6-6 = 12) and 3 (3-4 + 0-2 = 9); partner's 1-1 does not count
+    expect(out.scores).toEqual([21, 0]);
+  });
+});
+
 describe('blocked games', () => {
   const res = (pipCounts: number[]) => ({ kind: 'blocked' as const, winnerSeat: -1, winnerSlot: -1, points: 0, pipCounts, hands: [] });
   it('pair total decides', () => {
@@ -72,11 +91,11 @@ describe('blocked games', () => {
 });
 
 describe('random full matches', () => {
-  for (const mode of ['duplas', '1v1', 'three', 'ffa4'] as Mode[]) {
-    it(`${mode}: tiles are conserved, views never leak, matches finish`, () => {
+  for (const [mode, scoring] of [['duplas', 'batida'], ['duplas', 'pips'], ['1v1', 'pips'], ['three', 'batida'], ['ffa4', 'pips']] as [Mode, Rules['scoring']][]) {
+    it(`${mode}/${scoring}: tiles are conserved, views never leak, matches finish`, () => {
       for (let seed = 0; seed < 120; seed++) {
         const rng = mulberry32(seed);
-        let m = newMatch(rules(mode), rng);
+        let m = newMatch(rules(mode, scoring), rng);
         let steps = 0;
         while (m.winner === null) {
           const h = m.hand;
@@ -98,7 +117,7 @@ describe('random full matches', () => {
           m = applyMatchMove(m, h.turn, mv);
           if (++steps > 20000) throw new Error('did not terminate');
         }
-        expect(Math.max(...m.scores)).toBeGreaterThanOrEqual(6);
+        expect(Math.max(...m.scores)).toBeGreaterThanOrEqual(m.rules.targetScore);
       }
     });
   }

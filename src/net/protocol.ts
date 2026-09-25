@@ -41,6 +41,17 @@ export interface ClientState {
   autoNextIn: number | null;
   matchNo: number;
   spectators: string[];
+  /** Quem está na chamada de voz (malha WebRTC entre os navegadores). */
+  voice: VoiceMember[];
+}
+
+export interface VoiceMember {
+  clientId: string;
+  peerId: string;
+  name: string;
+  avatar: string;
+  seat: number | null;
+  muted: boolean;
 }
 
 export type ClientMsg =
@@ -55,7 +66,8 @@ export type ClientMsg =
   | { t: 'ready' }
   | { t: 'emote'; key: string }
   | { t: 'rematch' }
-  | { t: 'toLobby' };
+  | { t: 'toLobby' }
+  | { t: 'voice'; on: boolean; muted: boolean; peerId: string };
 
 export type HostMsg =
   | { t: 'state'; state: ClientState }

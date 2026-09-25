@@ -1,5 +1,5 @@
 import { ALL_TILES, hasNum, isDouble, otherSide, pipsOf, TILE_COUNT } from './tiles';
-import { HAND_SIZE, Rules, Mode, playersFor, scoreSlots, teamOf, hasTeams } from './rules';
+import { HAND_SIZE, Rules, Mode, playersFor, scoreSlots, teamOf, hasTeams, losersPips } from './rules';
 import { Rng, shuffle } from '../lib/rng';
 
 export type Side = 'L' | 'R';
@@ -300,7 +300,12 @@ function scoreHand(m: MatchState) {
   if (res.kind === 'tie') {
     res.points = 0;
   } else {
-    const base = res.kind === 'blocked' ? m.rules.points.blocked : m.rules.points[res.kind as keyof Rules['points']];
+    const base =
+      m.rules.scoring === 'pips'
+        ? losersPips(m.rules.mode, res.pipCounts, res.winnerSlot)
+        : res.kind === 'blocked'
+          ? m.rules.points.blocked
+          : m.rules.points[res.kind as keyof Rules['points']];
     res.points = base * m.hand.multiplier;
     m.scores = m.scores.slice();
     m.scores[res.winnerSlot] += res.points;

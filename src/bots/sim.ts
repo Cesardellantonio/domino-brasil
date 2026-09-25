@@ -1,5 +1,5 @@
 import { ALL_TILES, pipsOf } from '../engine/tiles';
-import { Rules, teamOf, hasTeams } from '../engine/rules';
+import { Rules, teamOf, hasTeams, losersPips } from '../engine/rules';
 import { Rng } from '../lib/rng';
 
 /** A tiny mutable perfect-information simulator used for Monte Carlo playouts. */
@@ -38,10 +38,12 @@ export function simPlay(s: Sim, id: number, side: 0 | 1, mult: number): SimOutco
   }
   s.passes = 0;
   if (hand.length === 0) {
+    const slot = teamOf(s.rules.mode, s.turn);
+    if (s.rules.scoring === 'pips') return { slot, points: losersPips(s.rules.mode, pipCounts(s), slot) * mult };
     const dbl = A[id] === B[id];
     const p = s.rules.points;
     const pts = both && dbl ? p.cruzada : both ? p.laELo : dbl ? p.carroca : p.simples;
-    return { slot: teamOf(s.rules.mode, s.turn), points: pts * mult };
+    return { slot, points: pts * mult };
   }
   s.turn = (s.turn + 1) % s.n;
   return null;
@@ -54,18 +56,25 @@ export function simPass(s: Sim, mult: number): SimOutcome | null {
   return null;
 }
 
+const pipCounts = (s: Sim) => s.hands.map((h) => h.reduce((x, id) => x + pipsOf(id), 0));
+
 export function blockedOutcome(s: Sim, mult: number): SimOutcome {
-  const c = s.hands.map((h) => h.reduce((x, id) => x + pipsOf(id), 0));
-  const pts = s.rules.points.blocked * mult;
+  const c = pipCounts(s);
+  const pts = (slot: number) =>
+    (s.rules.scoring === 'pips' ? losersPips(s.rules.mode, c, slot) : s.rules.points.blocked) * mult;
   if (hasTeams(s.rules.mode) && s.rules.blockedResolution === 'pairTotal') {
     const t0 = c[0] + c[2];
     const t1 = c[1] + c[3];
-    return t0 === t1 ? { slot: -1, points: 0 } : { slot: t0 < t1 ? 0 : 1, points: pts };
+    if (t0 === t1) return { slot: -1, points: 0 };
+    const slot = t0 < t1 ? 0 : 1;
+    return { slot, points: pts(slot) };
   }
   const min = Math.min(...c);
   const slots = new Set<number>();
   c.forEach((v, i) => v === min && slots.add(teamOf(s.rules.mode, i)));
-  return slots.size > 1 ? { slot: -1, points: 0 } : { slot: [...slots][0], points: pts };
+  if (slots.size > 1) return { slot: -1, points: 0 };
+  const slot = [...slots][0];
+  return { slot, points: pts(slot) };
 }
 
 /**

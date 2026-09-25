@@ -7,14 +7,17 @@ import { Segmented, Toggle } from './common';
 import { relPos } from './Game';
 import { unlockAudio } from '../lib/sound';
 import { TileSvg } from './Tile';
+import { VoiceApi } from './useSession';
+import { VoicePanel } from './VoicePanel';
 
 interface Props {
   st: ClientState;
   send: (m: ClientMsg) => void;
   onLeave: () => void;
+  voice: VoiceApi;
 }
 
-export function Lobby({ st, send, onLeave }: Props) {
+export function Lobby({ st, send, onLeave, voice }: Props) {
   const t = useT();
   const isHost = st.you.isHost;
   const s = st.settings;
@@ -91,6 +94,8 @@ export function Lobby({ st, send, onLeave }: Props) {
         </section>
       )}
 
+      {voice.available && <VoicePanel st={st} voice={voice} />}
+
       <section className="panel seats-panel">
         <div className={`mini-table n${n}`}>
           <div className="mini-felt">
@@ -153,7 +158,7 @@ export function Lobby({ st, send, onLeave }: Props) {
                                 { value: 'hard', label: t.hard },
                               ]}
                             />
-                            <button className="chip ghost" onClick={() => send({ t: 'setSeat', seat: i, kind: 'empty' })} aria-label="remove">
+                            <button className="chip ghost" onClick={() => send({ t: 'setSeat', seat: i, kind: 'empty' })} aria-label="remover">
                               ✕
                             </button>
                           </>
@@ -180,7 +185,7 @@ export function Lobby({ st, send, onLeave }: Props) {
                       e.stopPropagation();
                       setSwapFrom(swapFrom === i ? null : i);
                     }}
-                    aria-label="swap"
+                    aria-label="trocar de lugar"
                     title="⇄"
                   >
                     ⇄
@@ -214,12 +219,25 @@ export function Lobby({ st, send, onLeave }: Props) {
           />
         </div>
         <div className="field">
+          <label>{t.scoringMode}</label>
+          <Segmented<Settings['rules']['scoring']>
+            disabled={!isHost}
+            value={r.scoring ?? 'batida'}
+            onChange={(scoring) => setRules({ scoring, targetScore: scoring === 'pips' ? 100 : 6 })}
+            options={[
+              { value: 'pips', label: t.scoringPips },
+              { value: 'batida', label: t.scoringBatida },
+            ]}
+          />
+          <span className="hint-text">{r.scoring === 'pips' ? t.scoringPipsHelp : t.scoringBatidaHelp}</span>
+        </div>
+        <div className="field">
           <label>{t.target}</label>
           <Segmented<number>
             disabled={!isHost}
             value={r.targetScore}
             onChange={(targetScore) => setRules({ targetScore })}
-            options={[3, 6, 10, 15].map((x) => ({ value: x, label: String(x) }))}
+            options={(r.scoring === 'pips' ? [50, 100, 150, 200] : [3, 6, 10, 15]).map((x) => ({ value: x, label: String(x) }))}
           />
         </div>
         <div className="field">
@@ -265,7 +283,7 @@ export function Lobby({ st, send, onLeave }: Props) {
                 ]}
               />
             </div>
-            <div className="field">
+            {r.scoring !== 'pips' && <div className="field">
               <label>{t.scoring}</label>
               <div className="points-grid">
                 {(['simples', 'carroca', 'laELo', 'cruzada', 'blocked'] as const).map((k) => (
@@ -282,7 +300,7 @@ export function Lobby({ st, send, onLeave }: Props) {
                   </label>
                 ))}
               </div>
-            </div>
+            </div>}
             <Toggle disabled={!isHost} on={s.hints} onChange={(hints) => set({ hints })} label={t.hintsAllowed} />
           </>
         )}

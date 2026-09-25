@@ -152,7 +152,6 @@ export function Home({ go, openSheet }: Props) {
           <button onClick={() => openSheet('rules')}>📖 {t.rules}</button>
           <button onClick={() => openSheet('history')}>🏆 {t.history}</button>
           <button onClick={() => openSheet('settings')}>⚙️ {t.settings}</button>
-          <button onClick={() => setPrefs({ lang: prefs.lang === 'pt' ? 'en' : 'pt' })}>{prefs.lang === 'pt' ? '🇺🇸 EN' : '🇧🇷 PT'}</button>
         </nav>
       </div>
     </div>

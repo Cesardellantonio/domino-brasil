@@ -49,6 +49,7 @@ export class Room {
   ready: boolean[] = [];
   autoNextAt: number | null = null;
   clients = new Map<string, Client>();
+  voice = new Map<string, { peerId: string; muted: boolean }>();
   onSnapshot?: (s: RoomSnapshot) => void;
 
   private rng = mulberry32(secureSeed());
@@ -93,6 +94,7 @@ export class Room {
     if (!c) return;
     c.connected = false;
     c.lostAt = Date.now();
+    this.voice.delete(clientId);
     this.broadcast();
     if (this.graceTimer) clearTimeout(this.graceTimer);
     this.graceTimer = setTimeout(() => this.update(), DISCONNECT_GRACE_MS + 50);
@@ -218,6 +220,12 @@ export class Room {
         const humans = this.seats.slice(0, this.n).map((s, i) => (s.kind === 'human' && !this.covered(i) ? i : -1)).filter((i) => i >= 0);
         const connectedHumans = humans.filter((i) => this.clients.get(this.seats[i].clientId!)?.connected);
         if (connectedHumans.every((i) => this.ready[i])) this.advance();
+        return;
+      }
+      case 'voice': {
+        if (!this.online) return;
+        if (msg.on && typeof msg.peerId === 'string' && msg.peerId) this.voice.set(clientId, { peerId: msg.peerId.slice(0, 80), muted: !!msg.muted });
+        else this.voice.delete(clientId);
         return;
       }
       case 'emote': {
@@ -393,6 +401,10 @@ export class Room {
       ready: this.ready,
       autoNextIn: this.autoNextAt ? Math.max(0, this.autoNextAt - Date.now()) : null,
       matchNo: this.matchNo,
+      voice: [...this.voice.entries()].map(([id, v]) => {
+        const c = this.clients.get(id);
+        return { clientId: id, peerId: v.peerId, muted: v.muted, name: c?.name ?? '', avatar: c?.avatar ?? '', seat: this.seatOf(id) };
+      }),
       spectators: [...this.clients.entries()].filter(([id, c]) => c.connected && !seatIds.has(id) && c.name).map(([, c]) => c.name),
     };
   }

@@ -9,11 +9,11 @@ import { buildKnowledge } from '../bots/knowledge';
 import { mulberry32, secureSeed } from '../lib/rng';
 import { useT, emoteText, EMOTE_KEYS, EMOJI_KEYS } from '../lib/i18n';
 import { usePrefs, setPrefs } from '../lib/prefs';
-import { sfx, vibrate, unlockAudio } from '../lib/sound';
+import { sfx, vibrate, unlockAudio, syncAmbience } from '../lib/sound';
 import { countBatidas, recordMatch } from '../lib/history';
 import { Board, Ghost } from './Board';
 import { TileSvg } from './Tile';
-import { EmoteEvent } from './useSession';
+import { EmoteEvent, VoiceApi } from './useSession';
 import { Confetti } from './common';
 
 type Pos = 'bottom' | 'right' | 'top' | 'left';
@@ -32,9 +32,10 @@ interface Props {
   send: (m: ClientMsg) => void;
   emotes: EmoteEvent[];
   onMenu: () => void;
+  voice: VoiceApi;
 }
 
-export function Game({ st, send, emotes, onMenu }: Props) {
+export function Game({ st, send, emotes, onMenu, voice }: Props) {
   const t = useT();
   const prefs = usePrefs();
   const v = st.view!;
@@ -118,6 +119,11 @@ export function Game({ st, send, emotes, onMenu }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [st.matchNo, v.handNo, v.log.length, !!v.result]);
 
+  useEffect(() => {
+    syncAmbience(true);
+    return () => syncAmbience(false);
+  }, []);
+
   // Match over: fanfare + record.
   const recorded = useRef(0);
   useEffect(() => {
@@ -199,7 +205,7 @@ export function Game({ st, send, emotes, onMenu }: Props) {
   const others = [...Array(n).keys()].filter((s) => s !== persp);
   const pad = useMemo(() => {
     const narrow = typeof window !== 'undefined' && window.innerWidth < 700;
-    const side = n === 2 ? 8 : narrow ? 64 : 150;
+    const side = n === 2 ? 8 : narrow ? 94 : 150;
     return { top: narrow ? 70 : 100, bottom: 8, left: side, right: side };
   }, [n]);
 
@@ -223,6 +229,16 @@ export function Game({ st, send, emotes, onMenu }: Props) {
   })();
 
   const theme = `theme-${prefs.theme}`;
+  const [chatText, setChatText] = useState('');
+  const sendChat = () => {
+    const text = chatText.trim();
+    if (!text) return;
+    send({ t: 'emote', key: text.slice(0, 80) });
+    setChatText('');
+    setEmoteOpen(false);
+  };
+  const voiceOf = (seat: number) => st.voice.find((x) => x.seat === seat);
+  const myPips = v.myHand.reduce((a, id) => a + pipsOf(id), 0);
 
   return (
     <div className={`game ${theme} ${shake ? 'shake' : ''}`} onPointerDown={() => emoteOpen && setEmoteOpen(false)}>
@@ -274,7 +290,9 @@ export function Game({ st, send, emotes, onMenu }: Props) {
             voids={voids[s] ?? 0}
             emote={emotes.filter((e) => e.seat === s).slice(-1)[0]}
             t={t}
-            lang={prefs.lang}
+            inCall={!!voiceOf(s)}
+            muted={!!voiceOf(s)?.muted}
+            talking={!!st.seats[s]?.clientId && voice.speaking.has(st.seats[s].clientId!)}
           />
         ))}
         {v.boneyard > 0 && (
@@ -293,11 +311,17 @@ export function Game({ st, send, emotes, onMenu }: Props) {
       <div className={`me-area ${myTurn ? 'my-turn' : ''}`}>
         <div className="me-bar">
           {mySeat !== null ? (
-            <div className={`me-id ${teams ? 'ally' : ''}`}>
+            <div className={`me-id ${teams ? 'ally' : ''} ${voice.speaking.has(st.you.clientId) ? 'talking' : ''}`}>
               <span className="avatar sm">{st.seats[mySeat]?.avatar}</span>
+              <span className="my-count">
+                <b>{v.myHand.length}</b> {v.myHand.length === 1 ? t.tile : t.tiles}
+                <small>
+                  {myPips} {t.pts}
+                </small>
+              </span>
               {emotes.filter((e) => e.seat === mySeat).slice(-1).map((e) => (
                 <span key={e.id} className="bubble me-bubble">
-                  {emoteText(e.key, prefs.lang)}
+                  {emoteText(e.key)}
                 </span>
               ))}
               {bubbles[mySeat] ? <span className="bubble pass me-bubble">{t.passed}</span> : null}
@@ -315,6 +339,17 @@ export function Game({ st, send, emotes, onMenu }: Props) {
             )}
           </div>
           <div className="me-actions">
+            {voice.available && (
+              <button
+                className={`icon-btn mic ${voice.joined ? (voice.muted ? 'muted' : 'live') : ''} ${voice.speaking.has(st.you.clientId) ? 'talking' : ''}`}
+                disabled={voice.busy}
+                onClick={() => (voice.joined ? voice.toggleMute() : void voice.join())}
+                title={voice.joined ? (voice.muted ? t.unmute : t.mute) : t.joinCall}
+                aria-label={voice.joined ? (voice.muted ? t.unmute : t.mute) : t.joinCall}
+              >
+                {voice.busy ? '…' : voice.joined ? (voice.muted ? '🔇' : '🎙️') : '📞'}
+              </button>
+            )}
             {st.settings.hints && mySeat !== null && (
               <button className="icon-btn" disabled={!myTurn || !plays.length} onClick={askHint} title={t.hint} aria-label={t.hint}>
                 💡
@@ -322,11 +357,23 @@ export function Game({ st, send, emotes, onMenu }: Props) {
             )}
             {mySeat !== null && (
               <div className="emote-wrap" onPointerDown={(e) => e.stopPropagation()}>
-                <button className="icon-btn" onClick={() => setEmoteOpen((o) => !o)} aria-label="emotes">
+                <button className="icon-btn" onClick={() => setEmoteOpen((o) => !o)} aria-label={t.chat}>
                   💬
                 </button>
                 {emoteOpen && (
                   <div className="emote-pop">
+                    <form
+                      className="chat-row"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        sendChat();
+                      }}
+                    >
+                      <input value={chatText} maxLength={80} placeholder={t.chatPh} onChange={(e) => setChatText(e.target.value)} />
+                      <button type="submit" className="btn primary" disabled={!chatText.trim()}>
+                        ➤
+                      </button>
+                    </form>
                     <div className="emote-phrases">
                       {EMOTE_KEYS.map((k) => (
                         <button
@@ -336,7 +383,7 @@ export function Game({ st, send, emotes, onMenu }: Props) {
                             setEmoteOpen(false);
                           }}
                         >
-                          {emoteText(k, prefs.lang)}
+                          {emoteText(k)}
                         </button>
                       ))}
                     </div>
@@ -409,6 +456,15 @@ const PIPS_SQ: [number, number][][] = [
   [[-S, -S], [-S, 0], [-S, S], [S, -S], [S, 0], [S, S]],
 ];
 
+function ScoreBar({ score, target }: { score: number; target: number }) {
+  return (
+    <span className="score-bar" aria-label={`${score}/${target}`}>
+      <i style={{ width: `${Math.min(1, score / target) * 44}px` }} />
+      <small>/{target}</small>
+    </span>
+  );
+}
+
 function ScorePips({ score, target }: { score: number; target: number }) {
   if (target > 12) return <b className="score-num">{score}</b>;
   return (
@@ -436,7 +492,7 @@ function TopBar({ st, v, slotName, mySlot, onMenu }: { st: ClientState; v: Playe
             <div key={slot} className={`score ${slot === mySlot && st.you.seat !== null ? 'ally' : 'rival'}`}>
               <span className="score-name">{slotName(slot)}</span>
               <span className="score-val">{v.scores[slot]}</span>
-              <ScorePips score={v.scores[slot]} target={target} />
+              {v.rules.scoring === 'pips' ? <ScoreBar score={v.scores[slot]} target={target} /> : <ScorePips score={v.scores[slot]} target={target} />}
             </div>
           ))
         ) : (
@@ -455,7 +511,19 @@ function TopBar({ st, v, slotName, mySlot, onMenu }: { st: ClientState; v: Playe
           {t.hand} {v.handNo + 1}
         </span>
         {v.multiplier > 1 && <span className="mult">×{v.multiplier}</span>}
-        <button className="icon-btn ghost-btn sm" onClick={() => setPrefs({ sound: !prefs.sound })} aria-label={t.sound}>
+        {st.voice.length > 0 && (
+          <span className="call-pill" title={st.voice.map((x) => x.name).join(', ')}>
+            📞 {st.voice.length}
+          </span>
+        )}
+        <button
+          className="icon-btn ghost-btn sm"
+          onClick={() => {
+            setPrefs({ sound: !prefs.sound });
+            syncAmbience();
+          }}
+          aria-label={t.sound}
+        >
           {prefs.sound ? '🔊' : '🔇'}
         </button>
       </div>
@@ -475,40 +543,48 @@ function SeatBadge(props: {
   voids: number;
   emote?: EmoteEvent;
   t: ReturnType<typeof useT>;
-  lang: 'pt' | 'en';
+  inCall: boolean;
+  muted: boolean;
+  talking: boolean;
 }) {
-  const { pos, info, count, turn, ally, teams, passed, voids, emote, t, lang } = props;
+  const { pos, info, count, turn, ally, teams, passed, voids, emote, t, inCall, muted, talking } = props;
   const voidNums = [0, 1, 2, 3, 4, 5, 6].filter((x) => voids & (1 << x));
   const away = info.kind === 'human' && !info.connected;
   return (
-    <div className={`seat seat-${pos} ${turn ? 'turn' : ''} ${teams ? (ally ? 'ally' : 'rival') : 'rival'}`}>
-      <div className="avatar">
-        {info.avatar || '🙂'}
-        {info.kind === 'bot' && <span className="avatar-tag">🤖</span>}
-        {away && <span className="avatar-tag">📴</span>}
-      </div>
-      <div className="seat-info">
-        <div className="seat-name">{info.name}</div>
-        <div className="seat-count">
-          <span className="backs">
-            {Array.from({ length: Math.min(count, 9) }, (_, i) => (
-              <i key={i} />
-            ))}
-          </span>
-          <b>{count}</b>
+    <div className={`seat seat-${pos} ${turn ? 'turn' : ''} ${teams ? (ally ? 'ally' : 'rival') : 'rival'} ${talking ? 'talking' : ''}`}>
+      <div className="seat-top-row">
+        <div className="avatar">
+          {info.avatar || '🙂'}
+          {info.kind === 'bot' && <span className="avatar-tag">🤖</span>}
+          {away && <span className="avatar-tag">📴</span>}
+          {inCall && <span className="avatar-tag call">{muted ? '🔇' : talking ? '🗣️' : '🎧'}</span>}
         </div>
-        {info.covered && <div className="seat-flag">🤖 {t.botPlaying}</div>}
-        {!info.covered && away && <div className="seat-flag">{t.away}</div>}
-        {voidNums.length > 0 && (
-          <div className="voids" title={t.lacks}>
-            {t.lacks} {voidNums.map((x) => <span key={x}>{x}</span>)}
-          </div>
-        )}
+        <div className="seat-info">
+          <div className="seat-name">{info.name}</div>
+          {info.covered && <div className="seat-flag">🤖 {t.botPlaying}</div>}
+          {!info.covered && away && <div className="seat-flag">{t.away}</div>}
+        </div>
       </div>
+      <div className="seat-tiles" aria-label={`${count} ${t.tiles}`} title={`${count} ${count === 1 ? t.tile : t.tiles}`}>
+        <span className="fan">
+          {Array.from({ length: Math.min(count, 12) }, (_, i) => (
+            <i key={i} />
+          ))}
+        </span>
+        <span className={`count-badge ${count <= 2 ? 'low' : ''}`}>
+          <b>{count}</b>
+          <small>{count === 1 ? t.tile : t.tiles}</small>
+        </span>
+      </div>
+      {voidNums.length > 0 && (
+        <div className="voids" title={t.lacks}>
+          {t.lacks} {voidNums.map((x) => <span key={x}>{x}</span>)}
+        </div>
+      )}
       {passed && <div className="bubble pass">{t.passed}</div>}
       {emote && !passed && (
         <div key={emote.id} className="bubble">
-          {emoteText(emote.key, lang)}
+          {emoteText(emote.key)}
         </div>
       )}
     </div>
@@ -563,6 +639,7 @@ function ResultCard({ st, v, send, slotName, mySlot }: { st: ClientState; v: Pla
           <p className="sub points-line">
             <b>+{r.points}</b> {r.points === 1 ? t.point : t.points} {t.forTeam} <b>{slotName(r.winnerSlot)}</b>
             {r.kind === 'blocked' && ' · ' + t.trancou}
+            {v.rules.scoring === 'pips' && <span className="sub-note">({t.sumOfOpponents})</span>}
           </p>
         )}
         {r.kind === 'tie' && (
