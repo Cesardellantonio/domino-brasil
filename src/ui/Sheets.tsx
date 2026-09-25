@@ -79,10 +79,15 @@ function RulesPt() {
         Encaixe uma pedra numa das duas pontas da mesa com o mesmo número. Carroças (pedras duplas) ficam atravessadas. Se não tiver pedra que encaixe, você{' '}
         <b>passa</b> — e todo mundo fica sabendo que você não tem aqueles números. Se tiver, é obrigado a jogar.
       </p>
-      <h3>🧮 Pontuação: soma dos pontos (padrão)</h3>
+      <h3>🧮 Pontuação: corrida até 100 (padrão)</h3>
       <p>
-        Quem <b>bate</b> (joga a última pedra) faz a dupla marcar a <b>soma dos pontos das pedras que sobraram na mão dos adversários</b>. Exemplo: os adversários
-        ficaram com 6-4 e 3-2 → sua dupla marca 15 pontos. Vence a primeira dupla a chegar a <b>100 pontos</b> (dá para escolher 50, 150 ou 200).
+        Quando alguém <b>bate</b> (joga a última pedra), a dupla que <b>perdeu</b> a mão soma os pontos das pedras que ficaram na mão dos dois e
+        acrescenta ao <b>próprio placar</b>. Exemplo: vocês perderam e ficaram com 6-4 e 3-2 na mão → vocês levam 15 pontos. A dupla que bateu não leva
+        nada.
+      </p>
+      <p>
+        Joga-se mão atrás de mão. Quem <b>chegar a 100 pontos (ou passar) perde a partida</b>. Por isso, cuidado com pedra pesada na mão no fim da rodada!
+        Dá para mudar o limite para 50, 150 ou 200 na mesa.
       </p>
       <h3>🏁 Pontuação alternativa: por batida</h3>
       <p>Se preferir o jogo curto, escolha “Por batida” na mesa. Aí cada batida vale pontos fixos, e a partida vai a 6:</p>
@@ -112,20 +117,20 @@ function RulesPt() {
       </table>
       <h3>🔒 Jogo trancado</h3>
       <p>
-        Se ninguém consegue jogar, a mão tranca. Somam-se os pontos das pedras na mão de cada dupla e vence quem tiver a <b>menor soma</b>. Na soma dos
-        pontos, a dupla vencedora marca os pontos dos adversários (na pontuação por batida, vale 1). Empatou? Ninguém marca e a próxima mão vale dobro.
+        Se ninguém consegue jogar, a mão tranca. Somam-se os pontos das pedras na mão de cada dupla e vence quem tiver a <b>menor soma</b>. Na corrida
+        até 100, a dupla que perdeu soma os pontos da própria mão no placar (na pontuação por batida, o trancado vale 1). Empatou? Ninguém marca e a próxima mão vale dobro.
       </p>
       <h3>🏆 Partida</h3>
       <p>
-        A primeira dupla a atingir a meta vence. Ganhar sem o adversário marcar nada é <b>buchuda</b>! Tudo isso pode ser ajustado na mesa antes de
-        começar.
+        Na corrida até 100, perde quem chegar ao limite, e vencer sem ter levado nenhum ponto é <b>buchuda</b>! Na pontuação por batida, vence quem
+        chegar à meta primeiro. Tudo isso pode ser ajustado na mesa antes de começar.
       </p>
       <h3>🧠 Dicas de mesa</h3>
       <ul>
         <li>Livre-se cedo das carroças e das pedras pesadas.</li>
         <li>Preste atenção em quem passou: se o adversário não tem 4, deixe o 4 na ponta.</li>
         <li>Não tranque o seu parceiro — jogue nos números dele.</li>
-        <li>Na soma dos pontos, pedra pesada na mão no fim da mão vira ponto para o adversário.</li>
+        <li>Na corrida até 100, pedra pesada que sobra na mão vira ponto contra você — livre-se dela cedo.</li>
         <li>O 💡 dá uma dica usando o bot Difícil.</li>
         <li>Na mesa online, toque no 📞 para conversar por voz com todo mundo, como no boteco.</li>
       </ul>

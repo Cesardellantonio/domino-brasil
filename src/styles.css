@@ -2207,3 +2207,70 @@ h3 {
   border: 0;
   color: #fff;
 }
+
+/* corrida até 100 */
+.points-line.penalty {
+  display: block;
+}
+.penalty-line {
+  display: block;
+  font-size: 1.05rem;
+}
+.penalty-line .pen-who {
+  font-weight: 800;
+  color: var(--paper-ink);
+}
+.penalty-line .pen,
+.reveal-pips.pen {
+  color: #c2412d;
+}
+.penalty-line .pen {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+}
+.race {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+.race-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 64px;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+.race-name {
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.race-track {
+  height: 10px;
+  border-radius: 6px;
+  background: #e6dcc3;
+  overflow: hidden;
+}
+.race-track i {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e9a91d, #c2412d);
+  transition: width 1s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.race-row.ally .race-name {
+  color: #b37400;
+}
+.race-row.rival .race-name {
+  color: #c2412d;
+}
+.race-val {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  text-align: right;
+}
+.race-val small {
+  font-size: 0.7rem;
+  color: var(--paper-ink-2);
+}

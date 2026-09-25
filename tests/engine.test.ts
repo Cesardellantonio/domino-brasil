@@ -53,7 +53,7 @@ describe('batida kinds', () => {
 });
 
 describe('pip scoring (soma dos pontos)', () => {
-  it('the pair that goes out scores the pips left in the opponents hands', () => {
+  it('the pair that loses adds the pips left in their own hands', () => {
     const m = newMatch(rules('duplas', 'pips'), mulberry32(1));
     const h: HandState = {
       ...m.hand,
@@ -66,8 +66,26 @@ describe('pip scoring (soma dos pontos)', () => {
       mustPlay: null,
     };
     const out = applyMatchMove({ ...m, hand: h }, 0, { t: 'play', id: tileId(2, 5), side: 'L' });
-    // opponents are seats 1 (6-6 = 12) and 3 (3-4 + 0-2 = 9); partner's 1-1 does not count
-    expect(out.scores).toEqual([21, 0]);
+    // losers are seats 1 (6-6 = 12) and 3 (3-4 + 0-2 = 9): they take 21; the winners take nothing
+    expect(out.scores).toEqual([0, 21]);
+    expect(out.winner).toBe(null);
+  });
+
+  it('whoever reaches the limit loses the match', () => {
+    const m = newMatch(rules('duplas', 'pips'), mulberry32(1));
+    const h: HandState = {
+      ...m.hand,
+      hands: [[tileId(2, 5)], [tileId(6, 6)], [tileId(1, 1)], [tileId(3, 4)]],
+      root: { id: tileId(2, 4), inner: 2, outer: 4, seat: 1 },
+      left: [],
+      right: [{ id: tileId(4, 5), inner: 4, outer: 5, seat: 2 }],
+      ends: [2, 5],
+      turn: 0,
+      mustPlay: null,
+    };
+    const out = applyMatchMove({ ...m, scores: [40, 85], hand: h }, 0, { t: 'play', id: tileId(2, 5), side: 'L' });
+    expect(out.scores).toEqual([40, 104]);
+    expect(out.winner).toBe(0); // team 1 passed 100 and lost
   });
 });
 
@@ -118,6 +136,7 @@ describe('random full matches', () => {
           if (++steps > 20000) throw new Error('did not terminate');
         }
         expect(Math.max(...m.scores)).toBeGreaterThanOrEqual(m.rules.targetScore);
+        if (scoring === 'pips') expect(m.scores[m.winner!]).toBe(Math.min(...m.scores));
       }
     });
   }

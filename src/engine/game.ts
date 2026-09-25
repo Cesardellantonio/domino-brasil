@@ -1,5 +1,5 @@
 import { ALL_TILES, hasNum, isDouble, otherSide, pipsOf, TILE_COUNT } from './tiles';
-import { HAND_SIZE, Rules, Mode, playersFor, scoreSlots, teamOf, hasTeams, losersPips } from './rules';
+import { HAND_SIZE, Rules, Mode, playersFor, scoreSlots, teamOf, hasTeams } from './rules';
 import { Rng, shuffle } from '../lib/rng';
 
 export type Side = 'L' | 'R';
@@ -31,6 +31,8 @@ export interface HandResult {
   points: number;
   pipCounts: number[];
   hands: number[][];
+  /** Points added to each score slot by this hand. */
+  added?: number[];
 }
 
 export interface HandState {
@@ -297,22 +299,29 @@ export function applyMatchMove(m: MatchState, seat: number, move: Move): MatchSt
 function scoreHand(m: MatchState) {
   const res = m.hand.result!;
   if (res.kind === 'blocked') resolveBlocked(res, m.rules.mode, m.rules);
+  const added = new Array(m.scores.length).fill(0);
   if (res.kind === 'tie') {
     res.points = 0;
+  } else if (m.rules.scoring === 'pips') {
+    // Penalty race: every losing side adds the pips left in its own hands.
+    res.pipCounts.forEach((c, seat) => {
+      const slot = teamOf(m.rules.mode, seat);
+      if (slot !== res.winnerSlot) added[slot] += c * m.hand.multiplier;
+    });
+    res.points = added.reduce((a, b) => a + b, 0);
   } else {
-    const base =
-      m.rules.scoring === 'pips'
-        ? losersPips(m.rules.mode, res.pipCounts, res.winnerSlot)
-        : res.kind === 'blocked'
-          ? m.rules.points.blocked
-          : m.rules.points[res.kind as keyof Rules['points']];
+    const base = res.kind === 'blocked' ? m.rules.points.blocked : m.rules.points[res.kind as keyof Rules['points']];
     res.points = base * m.hand.multiplier;
-    m.scores = m.scores.slice();
-    m.scores[res.winnerSlot] += res.points;
+    added[res.winnerSlot] = res.points;
   }
+  res.added = added;
+  m.scores = m.scores.map((s, i) => s + added[i]);
   m.history = [...m.history, res];
   const top = Math.max(...m.scores);
-  if (top >= m.rules.targetScore) m.winner = m.scores.indexOf(top);
+  if (top >= m.rules.targetScore) {
+    // Pips: whoever reaches the limit loses, the lowest score wins. Batida: first to the target wins.
+    m.winner = m.rules.scoring === 'pips' ? m.scores.indexOf(Math.min(...m.scores)) : m.scores.indexOf(top);
+  }
 }
 
 export function nextHand(m: MatchState, rng: Rng): MatchState {
@@ -327,8 +336,11 @@ export function nextHand(m: MatchState, rng: Rng): MatchState {
 }
 
 /** Is a 0-point loser present when the match ends (a "buchuda")? */
-export function isBuchuda(m: MatchState): boolean {
-  return m.winner !== null && m.scores.some((s, i) => i !== m.winner && s === 0);
+export function isBuchuda(m: { winner: number | null; scores: number[]; rules: Rules }): boolean {
+  if (m.winner === null) return false;
+  // Pips: the winners never took a point. Batida: the losers never scored.
+  if (m.rules.scoring === 'pips') return m.scores[m.winner] === 0;
+  return m.scores.some((s, i) => i !== m.winner && s === 0);
 }
 
 export const totalTiles = TILE_COUNT;

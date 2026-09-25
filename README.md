@@ -7,8 +7,8 @@ Dominó de dupla do jeito brasileiro, no navegador. Pra jogar com a família pel
 ## O que tem
 
 - **Regras brasileiras.** 28 pedras, parceiro sentado à frente, e a carroça de sena (6-6) abre a primeira mão.
-- **Pontuação por soma dos pontos (padrão).** Quem bate marca a soma das pedras que sobraram na mão dos adversários, e a partida vai a 100 (50, 150 ou 200 também). Jogo trancado: vence a dupla com a menor soma. Empate: a próxima mão vale dobro.
-- **Pontuação por batida (opcional).** Simples 1, carroça 2, lá-e-lô 3, cruzada 4, partida a 6, com buchuda.
+- **Corrida até 100 (padrão).** A cada mão, a dupla que **perde** soma no próprio placar os pontos das pedras que ficaram na mão dela. Joga-se mão atrás de mão, e **quem chegar a 100 perde** (limite de 50, 150 ou 200 também). Jogo trancado: vence a dupla com a menor soma. Empate: a próxima mão vale dobro. Vencer sem levar nenhum ponto é buchuda.
+- **Pontuação por batida (opcional).** Quem bate marca: simples 1, carroça 2, lá-e-lô 3, cruzada 4. Vence quem chegar a 6.
 - **Modos.** Duplas (2×2), cada um por si (4), 3 jogadores e 1 contra 1 (com compra no monte).
 - **Mesa online.** Crie a mesa, mande o link no WhatsApp e a família entra com um toque. Lugar vazio vira bot, e dá pra escolher quem faz dupla com quem.
 - **📞 Chamada de voz da mesa.** Todo mundo conversa enquanto joga, com microfone mudo e indicador de quem está falando.

@@ -232,7 +232,7 @@ export function Lobby({ st, send, onLeave, voice }: Props) {
           <span className="hint-text">{r.scoring === 'pips' ? t.scoringPipsHelp : t.scoringBatidaHelp}</span>
         </div>
         <div className="field">
-          <label>{t.target}</label>
+          <label>{r.scoring === 'pips' ? t.limit : t.target}</label>
           <Segmented<number>
             disabled={!isHost}
             value={r.targetScore}

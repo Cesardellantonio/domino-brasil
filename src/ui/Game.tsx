@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ClientMsg, ClientState, SeatPublic } from '../net/protocol';
-import { Move, Placed, tilesOnTable } from '../engine/game';
+import { isBuchuda, Move, Placed, tilesOnTable } from '../engine/game';
 import { ALL_TILES, pipsOf, otherSide } from '../engine/tiles';
 import { hasTeams, teamOf } from '../engine/rules';
 import { PlayerView } from '../engine/view';
@@ -611,7 +611,9 @@ function ResultCard({ st, v, send, slotName, mySlot }: { st: ClientState; v: Pla
   const won = mySeat !== null && r.winnerSlot === mySlot;
   const iAmReady = mySeat !== null && st.ready[mySeat];
   const onTable = tilesOnTable(v as any).length;
-  const buchuda = matchOver && v.scores.some((s, i) => i !== v.winner && s === 0);
+  const buchuda = matchOver && isBuchuda(v);
+  const pipsMode = v.rules.scoring === 'pips';
+  const added = r.added ?? [];
 
   const title = matchOver
     ? mySeat === null
@@ -635,12 +637,40 @@ function ResultCard({ st, v, send, slotName, mySlot }: { st: ClientState; v: Pla
             {t.finalScore}: {teams ? `${slotName(mySlot)} ${v.scores[mySlot]} × ${v.scores[1 - mySlot]} ${slotName(1 - mySlot)}` : v.scores.join(' × ')}
           </p>
         )}
-        {!matchOver && r.kind !== 'tie' && (
+        {!matchOver && r.kind !== 'tie' && !pipsMode && (
           <p className="sub points-line">
             <b>+{r.points}</b> {r.points === 1 ? t.point : t.points} {t.forTeam} <b>{slotName(r.winnerSlot)}</b>
             {r.kind === 'blocked' && ' · ' + t.trancou}
-            {v.rules.scoring === 'pips' && <span className="sub-note">({t.sumOfOpponents})</span>}
           </p>
+        )}
+        {!matchOver && r.kind !== 'tie' && pipsMode && (
+          <p className="sub points-line penalty">
+            {r.kind === 'blocked' && <span className="sub-note">{t.trancou}</span>}
+            {added.map((pts, slot) =>
+              pts > 0 ? (
+                <span key={slot} className="penalty-line">
+                  <span className="pen-who">{slotName(slot)}</span>: <b className="pen">+{pts}</b> {pts === 1 ? t.point : t.points}
+                </span>
+              ) : null,
+            )}
+          </p>
+        )}
+        {!matchOver && pipsMode && (
+          <div className="race">
+            {(teams ? [mySlot, 1 - mySlot] : v.scores.map((_, i) => i)).map((slot) => (
+              <div key={slot} className={`race-row ${teams ? (slot === mySlot && mySeat !== null ? 'ally' : 'rival') : ''}`}>
+                <span className="race-name">{slotName(slot)}</span>
+                <span className="race-track">
+                  <i style={{ width: `${Math.min(100, (v.scores[slot] / v.rules.targetScore) * 100)}%` }} />
+                </span>
+                <span className="race-val">
+                  {v.scores[slot]}
+                  <small>/{v.rules.targetScore}</small>
+                </span>
+              </div>
+            ))}
+            <p className="muted small center">{t.raceRule.replace('{n}', String(v.rules.targetScore))}</p>
+          </div>
         )}
         {r.kind === 'tie' && (
           <p className="sub">
@@ -665,7 +695,10 @@ function ResultCard({ st, v, send, slotName, mySlot }: { st: ClientState; v: Pla
                   <span className="went-out">🏁</span>
                 )}
               </span>
-              <span className="reveal-pips">{r.hands[s]?.reduce((a, id) => a + pipsOf(id), 0) ?? 0}</span>
+              <span className={`reveal-pips ${pipsMode && teamOf(v.rules.mode, s) !== r.winnerSlot && r.kind !== 'tie' ? 'pen' : ''}`}>
+                {pipsMode && teamOf(v.rules.mode, s) !== r.winnerSlot && r.kind !== 'tie' ? '+' : ''}
+                {r.hands[s]?.reduce((a, id) => a + pipsOf(id), 0) ?? 0}
+              </span>
             </div>
           ))}
         </div>

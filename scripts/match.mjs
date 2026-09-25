@@ -8,7 +8,7 @@ await page.goto('http://127.0.0.1:5199/');
 await page.fill('#name-input', 'César');
 await page.click('.action.primary');
 await page.waitForTimeout(500);
-await page.click('.segmented button:has-text("3")');
+await page.click(".segmented button:text-is(\"50\")");
 await page.click('.segmented button:has-text("Rápido")');
 await page.click('.lobby-foot .btn.primary');
 let shotMid = false;
@@ -18,7 +18,10 @@ for (let i = 0; i < 400; i++) {
   if (!shotMid && (await page.$('.banner'))) { await page.waitForTimeout(250); await page.screenshot({ path: `${out}/banner.png` }); shotMid = true; }
   if (await page.$('.match-over')) break;
   const c = await page.$('.result-card .btn.primary:not([disabled])');
-  if (c) await c.click();
+  if (c) {
+    if (!globalThis.shotRes) { await page.waitForTimeout(1500); await page.screenshot({ path: `${out}/hand-result.png` }); globalThis.shotRes = 1; }
+    await c.click();
+  }
   await page.waitForTimeout(300);
 }
 await page.waitForTimeout(2600);
