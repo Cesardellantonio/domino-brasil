@@ -280,15 +280,13 @@ export class GuestConnection implements Connection {
     void this.findHost();
   }
 
-  /** Try each broker until one shows the table as open. Keeps retrying while the page is open. */
+  /** Ask every broker at once; the first one that shows the table as open wins. Retries while the page is open. */
   private async findHost() {
     const gen = ++this.generation;
     let round = 0;
     while (!this.closed && gen === this.generation) {
-      for (const url of BROKERS) {
-        if (this.closed || gen !== this.generation) return;
-        if (await this.tryBroker(url, gen)) return;
-      }
+      const results = await Promise.all(BROKERS.map((url) => this.tryBroker(url, gen)));
+      if (this.closed || gen !== this.generation || results.some(Boolean)) return;
       round++;
       this.setStatus('notFound');
       await new Promise((r) => setTimeout(r, Math.min(3000 * round, 10_000)));
@@ -313,6 +311,7 @@ export class GuestConnection implements Connection {
           const up = payload[0] === ON[0];
           if (!decided) {
             if (!up) return decide(false);
+            if (this.sock?.open && gen === this.generation) return decide(false); // another broker won the race
             this.adopt(sock, gen);
             return decide(true);
           }
