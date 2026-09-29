@@ -27,7 +27,11 @@ Dominó de dupla do jeito brasileiro, no navegador. Pra jogar com a família pel
 
 ## Como funciona o jogo online
 
-Não existe servidor próprio. O navegador de quem **cria a mesa** é o anfitrião: ele embaralha (com `crypto.getRandomValues`), valida todas as jogadas, roda os bots e manda para cada jogador **só as pedras dele**. Os outros se conectam direto a ele por WebRTC, usando [PeerJS](https://peerjs.com). O servidor público do PeerJS só apresenta os navegadores, e os relays TURN dele resolvem redes móveis mais fechadas. A voz vai direto entre os participantes, pela mesma tecnologia.
+Não existe servidor próprio. O navegador de quem **cria a mesa** é o anfitrião: ele embaralha (com `crypto.getRandomValues`), valida todas as jogadas, roda os bots e manda para cada jogador **só as pedras dele**.
+
+As mensagens do jogo passam por um "carteiro" MQTT público via WebSocket seguro (HiveMQ, com EMQX de reserva). Isso funciona em qualquer rede, inclusive dados móveis, porque não depende de conexão direta entre os aparelhos. O canal é um hash do código da mesa e todo o conteúdo vai **cifrado de ponta a ponta** (AES-GCM, com chave derivada do código), então o servidor público só vê bytes embaralhados.
+
+A **chamada de voz** é direta entre os aparelhos (WebRTC via PeerJS). Em redes mais fechadas ela precisa de um servidor TURN, que pode ser configurado no build com `VITE_TURN_URLS`, `VITE_TURN_USERNAME` e `VITE_TURN_CREDENTIAL`.
 
 ➡️ **O anfitrião deve deixar a aba aberta** durante a partida. Se ele recarregar, a mesa volta de onde parou e todos reconectam. Se alguém cair, um bot joga no lugar dele depois de 40 segundos, até ele voltar.
 

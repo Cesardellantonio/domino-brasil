@@ -73,7 +73,7 @@ export function useSession(code: string): Session {
       conn = new GuestConnection(code, hello);
     }
     connRef.current = conn;
-    const voice = new Voice(() => conn.getPeer());
+    const voice = new Voice();
     voice.onSpeaking = setSpeakingPeers;
     voiceRef.current = voice;
     const announce = () => {
@@ -133,18 +133,21 @@ export function useSession(code: string): Session {
         const v = voiceRef.current;
         const conn = connRef.current;
         if (!v || !conn || v.active) return;
-        if (!conn.getPeer()) {
-          setVState((s) => ({ ...s, error: 'Conexão ainda não está pronta. Tente de novo em instantes.' }));
-          return;
-        }
         setVState((s) => ({ ...s, busy: true, error: null }));
         try {
           await v.join();
           conn.send({ t: 'voice', on: true, muted: false, peerId: v.myId! });
           setVState({ joined: true, muted: false, busy: false, error: null });
         } catch (e: any) {
+          v.leave();
           const denied = e?.name === 'NotAllowedError' || e?.name === 'SecurityError';
-          setVState({ joined: false, muted: false, busy: false, error: denied ? 'Permita o uso do microfone no navegador para entrar na chamada.' : 'Não foi possível acessar o microfone.' });
+          const msg = denied
+            ? 'Permita o uso do microfone no navegador para entrar na chamada.'
+            : e?.name === 'NotFoundError'
+              ? 'Nenhum microfone encontrado.'
+              : 'Não foi possível entrar na chamada agora. Tente de novo.';
+          setVState({ joined: false, muted: false, busy: false, error: msg });
+          setTimeout(() => setVState((s) => ({ ...s, error: null })), 4000);
         }
       },
       leave: () => {

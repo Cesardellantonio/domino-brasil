@@ -1,8 +1,19 @@
 import type { MediaConnection, Peer as PeerT } from 'peerjs';
 
+/** Servidores ICE: STUN públicos + TURN opcional configurado no build (VITE_TURN_*). */
+function iceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
+  const env = (import.meta as any).env ?? {};
+  if (env.VITE_TURN_URLS) {
+    servers.push({ urls: String(env.VITE_TURN_URLS).split(','), username: env.VITE_TURN_USERNAME, credential: env.VITE_TURN_CREDENTIAL });
+  }
+  return servers;
+}
+
 /**
  * Chamada de voz em malha: cada participante liga direto para os outros (WebRTC).
  * Para não haver ligação dupla, só quem tem o peerId "menor" inicia a chamada.
+ * O Voice tem seu próprio peer PeerJS, criado só quando alguém entra na chamada.
  */
 export class Voice {
   stream: MediaStream | null = null;
@@ -19,7 +30,11 @@ export class Voice {
   private lastSpeaking = '';
   private startedAt = new Map<string, number>();
 
-  constructor(private getPeer: () => PeerT | null) {}
+  private peer: PeerT | null = null;
+
+  private getPeer() {
+    return this.peer && this.peer.open && !this.peer.destroyed ? this.peer : null;
+  }
 
   get active() {
     return !!this.stream;
@@ -28,8 +43,32 @@ export class Voice {
     return this.getPeer()?.id ?? null;
   }
 
+  private async ensurePeer(): Promise<PeerT> {
+    const existing = this.getPeer();
+    if (existing) return existing;
+    const { Peer } = await import('peerjs');
+    const peer = new Peer({ debug: 0, config: { iceServers: iceServers() } });
+    this.peer = peer;
+    peer.on('disconnected', () => !peer.destroyed && setTimeout(() => !peer.destroyed && peer.reconnect(), 1500));
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('peer timeout')), 12_000);
+      peer.on('open', () => {
+        clearTimeout(t);
+        resolve();
+      });
+      peer.on('error', (e) => {
+        if (!peer.open) {
+          clearTimeout(t);
+          reject(e);
+        }
+      });
+    });
+    return peer;
+  }
+
   async join() {
     if (this.stream) return;
+    await this.ensurePeer();
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       video: false,
@@ -60,6 +99,9 @@ export class Voice {
     this.loop = null;
     void this.ctx?.close();
     this.ctx = null;
+    this.peer?.destroy();
+    this.peer = null;
+    this.attached = null;
     this.onSpeaking?.(new Set());
   }
 

@@ -1,6 +1,6 @@
-import type { DataConnection, Peer as PeerT } from 'peerjs';
 import { ClientMsg, HostMsg, RoomSnapshot } from './protocol';
 import { Room } from './room';
+import { BROKERS, MqttSocket, open, roomChannel, RoomChannel, seal, sha256hex } from './mqtt';
 
 export type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'notFound' | 'error';
 
@@ -11,12 +11,35 @@ export interface Connection {
   onMessage(fn: (m: HostMsg) => void): () => void;
   onStatus(fn: (s: ConnStatus) => void): () => void;
   close(): void;
-  /** The PeerJS peer (online tables only), used for voice calls. */
-  getPeer(): PeerT | null;
 }
 
-const PEER_PREFIX = 'dominobr-v1-';
-const peerIdFor = (code: string) => PEER_PREFIX + code.toUpperCase();
+/**
+ * Transporte da mesa online.
+ *
+ * Os navegadores não se conectam diretamente (isso falha em muitas redes de celular e
+ * roteadores). Em vez disso, todos falam com um "carteiro" MQTT público por WebSocket
+ * seguro, que funciona em qualquer rede. Os tópicos são um hash do código da mesa e todo
+ * o conteúdo vai cifrado com AES-GCM (chave derivada do código), então o servidor público
+ * só vê bytes embaralhados.
+ *
+ *   convidado --(cifrado)--> <base>/h           caixa de entrada do anfitrião
+ *   anfitrião --(cifrado)--> <base>/c/<inbox>   caixa de entrada de cada convidado
+ *   anfitrião --(retido)---> <base>/p           presença: 1 = mesa aberta, 0 = fechada
+ */
+
+/** Envelope from guest to host. */
+interface Up {
+  from: string;
+  inbox: string;
+  m?: ClientMsg;
+  hb?: 1;
+  bye?: 1;
+}
+
+const HEARTBEAT_MS = 5000;
+const GUEST_TIMEOUT_MS = 17_000;
+const ON = new Uint8Array([49]); // "1"
+const OFF = new Uint8Array([48]); // "0"
 
 class Emitter<T> {
   private fns = new Set<(v: T) => void>();
@@ -28,6 +51,18 @@ class Emitter<T> {
     for (const f of this.fns) f(v);
   }
 }
+
+/** Serializes async work (encryption) so messages keep their order. */
+class Queue {
+  private tail: Promise<unknown> = Promise.resolve();
+  run(fn: () => Promise<void>) {
+    this.tail = this.tail.then(fn, fn).catch(() => {});
+  }
+}
+
+const rid = () => Math.random().toString(36).slice(2, 10);
+
+// ------------------------------------------------------------------ snapshots
 
 const snapKey = (code: string) => `domino.room.${code}`;
 export function loadSnapshot(code: string): RoomSnapshot | null {
@@ -56,17 +91,28 @@ export function saveSnapshot(s: RoomSnapshot) {
   }
 }
 
-/** The host plays in-process with its own Room; online hosts also accept peers. */
+// ------------------------------------------------------------------ host
+
+interface Guest {
+  inbox: string;
+  sock: MqttSocket;
+  lastSeen: number;
+  live: boolean;
+  q: Queue;
+}
+
+/** The host plays in-process with its own Room; online hosts also serve guests through the relay. */
 export class HostConnection implements Connection {
   readonly isHost = true;
   status: ConnStatus = 'open';
   room: Room;
   private msgs = new Emitter<HostMsg>();
   private statuses = new Emitter<ConnStatus>();
-  private peer: PeerT | null = null;
   private closed = false;
-  private retry = 0;
-  private current = new Map<string, DataConnection>();
+  private chan: RoomChannel | null = null;
+  private socks = new Map<string, MqttSocket>();
+  private guests = new Map<string, Guest>();
+  private watchdog: ReturnType<typeof setInterval> | null = null;
 
   constructor(room: Room, private clientId: string) {
     this.room = room;
@@ -74,110 +120,8 @@ export class HostConnection implements Connection {
     room.connect(clientId, (m) => queueMicrotask(() => this.msgs.emit(m)));
     if (room.online) {
       this.status = 'connecting';
-      void this.listen();
+      void this.start();
     }
-  }
-
-  private setStatus(s: ConnStatus) {
-    this.status = s;
-    this.statuses.emit(s);
-  }
-
-  private async listen() {
-    const { Peer } = await import('peerjs');
-    if (this.closed) return;
-    const peer = new Peer(peerIdFor(this.room.code), { debug: 0 });
-    this.peer = peer;
-    peer.on('open', () => {
-      this.retry = 0;
-      this.setStatus('open');
-    });
-    peer.on('connection', (conn) => this.accept(conn));
-    peer.on('disconnected', () => {
-      if (this.closed) return;
-      this.setStatus('reconnecting');
-      setTimeout(() => !this.closed && !peer.destroyed && peer.reconnect(), 1500);
-    });
-    peer.on('error', (err: any) => {
-      if (this.closed) return;
-      const type = err?.type as string;
-      if (type === 'unavailable-id' || type === 'network' || type === 'server-error' || type === 'socket-error' || type === 'socket-closed') {
-        // The id may still be held from a previous tab/reload; retry with backoff.
-        this.setStatus('reconnecting');
-        peer.destroy();
-        const wait = Math.min(1000 * 2 ** this.retry++, 8000);
-        setTimeout(() => !this.closed && void this.listen(), wait);
-      }
-    });
-  }
-
-  private accept(conn: DataConnection) {
-    let clientId: string | null = null;
-    conn.on('data', (raw) => {
-      const msg = raw as ClientMsg;
-      if (!msg || typeof msg !== 'object') return;
-      if (msg.t === 'hello') {
-        if (typeof msg.clientId !== 'string' || msg.clientId === this.clientId) return;
-        clientId = msg.clientId;
-        this.current.set(clientId, conn);
-        this.room.connect(clientId, (m) => {
-          if (conn.open) conn.send(m);
-        });
-      }
-      if (clientId) this.room.handle(clientId, msg);
-    });
-    const drop = () => {
-      // Ignore a stale connection closing after the same client already reconnected.
-      if (clientId && this.current.get(clientId) === conn) {
-        this.current.delete(clientId);
-        this.room.disconnect(clientId);
-      }
-    };
-    conn.on('close', drop);
-    conn.on('error', drop);
-  }
-
-  send(m: ClientMsg) {
-    queueMicrotask(() => this.room.handle(this.clientId, m));
-  }
-  getPeer() {
-    return this.peer && this.peer.open ? this.peer : null;
-  }
-  onMessage(fn: (m: HostMsg) => void) {
-    return this.msgs.on(fn);
-  }
-  onStatus(fn: (s: ConnStatus) => void) {
-    return this.statuses.on(fn);
-  }
-  close() {
-    this.closed = true;
-    this.room.dispose();
-    this.peer?.destroy();
-  }
-}
-
-/** A guest connects to the host's browser over WebRTC. */
-export class GuestConnection implements Connection {
-  readonly isHost = false;
-  status: ConnStatus = 'connecting';
-  private msgs = new Emitter<HostMsg>();
-  private statuses = new Emitter<ConnStatus>();
-  private peer: PeerT | null = null;
-  private conn: DataConnection | null = null;
-  private closed = false;
-  private attempts = 0;
-  private hello: ClientMsg;
-  private lastData = 0;
-  private watchdog: ReturnType<typeof setInterval> | null = null;
-
-  constructor(private code: string, hello: ClientMsg & { t: 'hello' }) {
-    this.hello = hello;
-    void this.start();
-  }
-
-  updateHello(h: ClientMsg & { t: 'hello' }) {
-    this.hello = h;
-    this.send(h);
   }
 
   private setStatus(s: ConnStatus) {
@@ -187,70 +131,93 @@ export class GuestConnection implements Connection {
   }
 
   private async start() {
-    const { Peer } = await import('peerjs');
+    this.chan = await roomChannel(this.room.code);
     if (this.closed) return;
-    const peer = new Peer({ debug: 0 });
-    this.peer = peer;
-    peer.on('open', () => this.dial());
-    peer.on('disconnected', () => !this.closed && !peer.destroyed && setTimeout(() => peer.reconnect(), 1500));
-    peer.on('error', (err: any) => {
-      if (this.closed) return;
-      if (err?.type === 'peer-unavailable') {
-        this.attempts++;
-        this.setStatus(this.attempts >= 3 ? 'notFound' : 'reconnecting');
-        setTimeout(() => this.dial(), Math.min(1500 * this.attempts, 6000));
-      } else if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(err?.type)) {
-        this.setStatus('reconnecting');
-        peer.destroy();
-        setTimeout(() => !this.closed && void this.start(), 2500);
+    for (const url of BROKERS) void this.connectBroker(url, 0);
+    this.watchdog = setInterval(() => {
+      const now = Date.now();
+      for (const [id, g] of this.guests)
+        if (g.live && now - g.lastSeen > GUEST_TIMEOUT_MS) {
+          g.live = false;
+          this.room.disconnect(id);
+        }
+    }, 2000);
+  }
+
+  private async connectBroker(url: string, attempt: number) {
+    if (this.closed || !this.chan) return;
+    const { base } = this.chan;
+    const sock = new MqttSocket(url);
+    try {
+      await sock.connect('dmbr-h-' + rid(), { topic: base + '/p', payload: OFF, retain: true });
+    } catch {
+      setTimeout(() => this.connectBroker(url, attempt + 1), Math.min(1500 * 2 ** attempt, 15_000));
+      this.refreshStatus();
+      return;
+    }
+    if (this.closed) return sock.close();
+    this.socks.set(url, sock);
+    sock.onMessage = (topic, payload) => {
+      if (topic === base + '/h') void this.receive(sock, payload);
+    };
+    sock.onClose = () => {
+      this.socks.delete(url);
+      this.refreshStatus();
+      setTimeout(() => this.connectBroker(url, 0), 1500);
+    };
+    sock.subscribe([base + '/h']);
+    sock.publish(base + '/p', ON, true);
+    this.refreshStatus();
+  }
+
+  private refreshStatus() {
+    if (this.closed) return;
+    this.setStatus(this.socks.size > 0 ? 'open' : 'reconnecting');
+  }
+
+  private async receive(sock: MqttSocket, payload: Uint8Array) {
+    const env = await open<Up>(this.chan!.key, payload);
+    if (!env || typeof env.from !== 'string' || typeof env.inbox !== 'string' || env.from === this.clientId) return;
+    const id = env.from;
+    let g = this.guests.get(id);
+    if (!g) {
+      g = { inbox: env.inbox, sock, lastSeen: 0, live: false, q: new Queue() };
+      this.guests.set(id, g);
+    }
+    g.inbox = env.inbox;
+    g.sock = sock; // reply through the broker the guest is using
+    g.lastSeen = Date.now();
+    if (env.bye) {
+      if (g.live) {
+        g.live = false;
+        this.room.disconnect(id);
       }
+      return;
+    }
+    if (!g.live) {
+      g.live = true;
+      this.room.connect(id, (m) => this.deliver(id, m));
+      if (!env.m) this.room.update(); // heartbeat after a gap: resend the table state
+    }
+    if (env.m) {
+      if (env.m.t === 'hello' && env.m.clientId !== id) return;
+      this.room.handle(id, env.m);
+    }
+  }
+
+  private deliver(id: string, m: HostMsg) {
+    const g = this.guests.get(id);
+    if (!g || !this.chan) return;
+    const { key, base } = this.chan;
+    g.q.run(async () => {
+      const data = await seal(key, m);
+      const sock = g.sock.open ? g.sock : [...this.socks.values()][0];
+      sock?.publish(base + '/c/' + g.inbox, data);
     });
-    this.watchdog ??= setInterval(() => {
-      // Connection silently died (phone slept): re-dial.
-      if (this.status === 'open' && this.conn && !this.conn.open) this.redial();
-    }, 3000);
-  }
-
-  private dial() {
-    if (this.closed || !this.peer || this.peer.destroyed || !this.peer.open) return;
-    this.conn?.close();
-    const conn = this.peer.connect(peerIdFor(this.code), { reliable: true });
-    this.conn = conn;
-    conn.on('open', () => {
-      this.attempts = 0;
-      this.setStatus('open');
-      conn.send(this.hello);
-    });
-    conn.on('data', (raw) => {
-      this.lastData = Date.now();
-      this.msgs.emit(raw as HostMsg);
-    });
-    conn.on('close', () => this.conn === conn && this.redial());
-    conn.on('error', () => this.conn === conn && this.redial());
-  }
-
-  private redial() {
-    if (this.closed) return;
-    this.setStatus('reconnecting');
-    setTimeout(() => this.dial(), 1200);
-  }
-
-  retryNow() {
-    this.attempts = 0;
-    this.setStatus('connecting');
-    if (this.peer && !this.peer.destroyed && this.peer.open) this.dial();
-    else void this.start();
-  }
-
-  get idleMs() {
-    return Date.now() - this.lastData;
   }
 
   send(m: ClientMsg) {
-    if (this.conn?.open) this.conn.send(m);
-  }
-  getPeer() {
-    return this.peer && this.peer.open ? this.peer : null;
+    queueMicrotask(() => this.room.handle(this.clientId, m));
   }
   onMessage(fn: (m: HostMsg) => void) {
     return this.msgs.on(fn);
@@ -261,8 +228,174 @@ export class GuestConnection implements Connection {
   close() {
     this.closed = true;
     if (this.watchdog) clearInterval(this.watchdog);
-    this.conn?.close();
-    this.peer?.destroy();
+    this.room.dispose();
+    for (const s of this.socks.values()) {
+      if (this.chan) s.publish(this.chan.base + '/p', OFF, true);
+      s.close();
+    }
+    this.socks.clear();
+  }
+}
+
+// ------------------------------------------------------------------ guest
+
+/** A guest reaches the host's browser through the relay. */
+export class GuestConnection implements Connection {
+  readonly isHost = false;
+  status: ConnStatus = 'connecting';
+  private msgs = new Emitter<HostMsg>();
+  private statuses = new Emitter<ConnStatus>();
+  private chan: RoomChannel | null = null;
+  private inbox = '';
+  private sock: MqttSocket | null = null;
+  private closed = false;
+  private hostUp = false;
+  private hello: ClientMsg & { t: 'hello' };
+  private hb: ReturnType<typeof setInterval> | null = null;
+  private rq = new Queue();
+  private sq = new Queue();
+  private generation = 0;
+  private onVisible = () => {
+    if (document.visibilityState === 'visible' && !this.sock?.open) this.retryNow();
+  };
+  private onHide = () => this.post({ bye: 1 });
+
+  constructor(private code: string, hello: ClientMsg & { t: 'hello' }) {
+    this.hello = hello;
+    document.addEventListener('visibilitychange', this.onVisible);
+    window.addEventListener('pagehide', this.onHide);
+    void this.start();
+  }
+
+  private setStatus(s: ConnStatus) {
+    if (this.status === s) return;
+    this.status = s;
+    this.statuses.emit(s);
+  }
+
+  private async start() {
+    this.chan = await roomChannel(this.code);
+    this.inbox = (await sha256hex('dominobr-inbox:' + this.hello.clientId)).slice(0, 20);
+    this.hb = setInterval(() => this.hostUp && this.post({ hb: 1 }), HEARTBEAT_MS);
+    void this.findHost();
+  }
+
+  /** Try each broker until one shows the table as open. Keeps retrying while the page is open. */
+  private async findHost() {
+    const gen = ++this.generation;
+    let round = 0;
+    while (!this.closed && gen === this.generation) {
+      for (const url of BROKERS) {
+        if (this.closed || gen !== this.generation) return;
+        if (await this.tryBroker(url, gen)) return;
+      }
+      round++;
+      this.setStatus('notFound');
+      await new Promise((r) => setTimeout(r, Math.min(3000 * round, 10_000)));
+    }
+  }
+
+  private tryBroker(url: string, gen: number): Promise<boolean> {
+    const { base, key } = this.chan!;
+    return new Promise((resolve) => {
+      const sock = new MqttSocket(url);
+      let decided = false;
+      const decide = (ok: boolean) => {
+        if (decided) return;
+        decided = true;
+        clearTimeout(timer);
+        if (!ok) sock.close();
+        resolve(ok);
+      };
+      const timer = setTimeout(() => decide(false), 6000);
+      sock.onMessage = (topic, payload) => {
+        if (topic === base + '/p') {
+          const up = payload[0] === ON[0];
+          if (!decided) {
+            if (!up) return decide(false);
+            this.adopt(sock, gen);
+            return decide(true);
+          }
+          if (this.sock !== sock) return;
+          this.hostUp = up;
+          if (up) {
+            this.setStatus('open');
+            this.post({ m: this.hello });
+          } else this.setStatus('reconnecting');
+        } else if (topic === base + '/c/' + this.inbox && this.sock === sock) {
+          this.rq.run(async () => {
+            const m = await open<HostMsg>(key, payload);
+            if (m) this.msgs.emit(m);
+          });
+        }
+      };
+      sock.onClose = () => {
+        if (!decided) return decide(false);
+        if (this.sock === sock && !this.closed) {
+          this.sock = null;
+          this.hostUp = false;
+          this.setStatus('reconnecting');
+          setTimeout(() => this.findHost(), 1200);
+        }
+      };
+      sock
+        .connect('dmbr-g-' + rid())
+        .then(() => {
+          if (this.closed || gen !== this.generation) return decide(false);
+          sock.subscribe([base + '/c/' + this.inbox, base + '/p']);
+        })
+        .catch(() => decide(false));
+    });
+  }
+
+  private adopt(sock: MqttSocket, gen: number) {
+    if (gen !== this.generation || this.closed) return sock.close();
+    if (this.sock && this.sock !== sock) this.sock.close();
+    this.sock = sock;
+    this.hostUp = true;
+    this.setStatus('open');
+    this.post({ m: this.hello });
+  }
+
+  private post(extra: Omit<Up, 'from' | 'inbox'>) {
+    const sock = this.sock;
+    const chan = this.chan;
+    if (!sock || !chan) return;
+    const env: Up = { from: this.hello.clientId, inbox: this.inbox, ...extra };
+    this.sq.run(async () => {
+      const data = await seal(chan.key, env);
+      sock.publish(chan.base + '/h', data);
+    });
+  }
+
+  retryNow() {
+    if (this.closed) return;
+    this.setStatus('connecting');
+    const old = this.sock;
+    this.sock = null;
+    old?.close();
+    void this.findHost();
+  }
+
+  send(m: ClientMsg) {
+    if (m.t === 'hello') this.hello = m;
+    this.post({ m });
+  }
+  onMessage(fn: (m: HostMsg) => void) {
+    return this.msgs.on(fn);
+  }
+  onStatus(fn: (s: ConnStatus) => void) {
+    return this.statuses.on(fn);
+  }
+  close() {
+    this.post({ bye: 1 });
+    this.closed = true;
+    this.generation++;
+    if (this.hb) clearInterval(this.hb);
+    document.removeEventListener('visibilitychange', this.onVisible);
+    window.removeEventListener('pagehide', this.onHide);
+    const s = this.sock;
+    setTimeout(() => s?.close(), 300); // let the goodbye go out
   }
 }
 
